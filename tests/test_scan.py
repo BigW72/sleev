@@ -2,7 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from sleev.scan import find_album_folders, has_cover, parse_folder_name, strip_qualifiers
+from sleev.scan import (
+    artist_from_parent,
+    describe_folder,
+    find_album_folders,
+    has_cover,
+    parse_folder_name,
+    strip_qualifiers,
+)
 
 
 @pytest.mark.parametrize(
@@ -92,6 +99,58 @@ def test_find_album_folders_ignores_a_root_without_audio(tmp_path: Path) -> None
     (tmp_path / "Artist - Album" / "01.flac").touch()
 
     assert find_album_folders(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    ("parent", "expected"),
+    [
+        # The usual Artist/Album layout.
+        ("Radiohead", "Radiohead"),
+        ("DJ-Kicks", "DJ-Kicks"),
+        # A box set's discs sit inside another album folder, so parse it.
+        ("Depeche Mode - 2004 - DMBX The Singles", "Depeche Mode"),
+        # Collection markers are not artists.
+        ("#va", None),
+        ("#ost", None),
+        # An album folder naming no artist has none to lend.
+        ("MTVExtreme - 2001", None),
+        ("A Clockwork Orange (OST) - 1972", None),
+    ],
+)
+def test_artist_from_parent(tmp_path: Path, parent: str, expected: str | None) -> None:
+    folder = tmp_path / parent / "Disc 1"
+    folder.mkdir(parents=True)
+
+    assert artist_from_parent(folder, tmp_path) == expected
+
+
+def test_artist_from_parent_ignores_the_scan_root(tmp_path: Path) -> None:
+    # Pointing sleev at one album shouldn't drag in the folder above it.
+    album = tmp_path / "Radiohead" / "Kid A"
+    album.mkdir(parents=True)
+
+    assert artist_from_parent(album, album) is None
+    assert artist_from_parent(album, None) is None
+
+
+def test_describe_folder_falls_back_to_the_parent_for_the_artist(tmp_path: Path) -> None:
+    album = tmp_path / "Radiohead" / "Kid A"
+    album.mkdir(parents=True)
+    (album / "01.flac").touch()
+
+    described = describe_folder(album, tmp_path)
+
+    assert (described.artist, described.album) == ("Radiohead", "Kid A")
+
+
+def test_describe_folder_keeps_an_artist_from_the_folder_name(tmp_path: Path) -> None:
+    album = tmp_path / "Compilations" / "Radiohead - 2000 - Kid A"
+    album.mkdir(parents=True)
+    (album / "01.flac").touch()
+
+    described = describe_folder(album, tmp_path)
+
+    assert described.artist == "Radiohead"
 
 
 def test_has_cover_recognises_common_filenames(tmp_path: Path) -> None:

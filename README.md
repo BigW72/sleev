@@ -21,6 +21,14 @@ without the year-aware pattern `A Clockwork Orange (OST) - 1972` would parse as 
 artist named after the film. Trailing `[FLAC]`-style tags are dropped, unless the
 title is nothing but brackets — Sigur Rós really did call an album `( )`.
 
+When the folder name yields no artist, the folder above it is used, since libraries
+are usually laid out `Artist/Album`. A box set's discs sit inside another album
+folder, so the parent is parsed rather than taken literally — `Depeche Mode - 2004 -
+DMBX The Singles/Disc 3` gives `Depeche Mode`. Parents beginning with `#` are treated
+as collection markers (`#va`, `#ost`) rather than artists, and a parent that is itself
+an album folder naming no artist lends nothing. The folder you point `sleev` at never
+borrows from its own parent, which sits outside the scan.
+
 When a lookup finds nothing, it's retried with trailing qualifiers stripped from the
 album title — `Animals [1997 Remaster]` becomes `Animals`, and stacked qualifiers like
 `The Annual 2009 (Disc 2) (Mixed by Goodwill) [AU]` come off in one go. The archive

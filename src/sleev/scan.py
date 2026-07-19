@@ -162,14 +162,46 @@ def parse_folder_name(name: str) -> tuple[str | None, str | None]:
     return (artist or None), (_drop_noise(match["album"]) or None)
 
 
-def describe_folder(folder: Path) -> Album:
+def artist_from_parent(folder: Path, root: Path | None) -> str | None:
+    """Guess the artist from the folder *above* an album folder.
+
+    Libraries are usually laid out Artist/Album, so the parent names the
+    artist for soundtracks and compilations whose own folder doesn't. Two
+    cases it has to sidestep:
+
+    - "#va", "#ost" and friends mark collections, not artists.
+    - A box set's discs sit inside another album folder, so the parent is
+      parsed rather than taken literally: "Depeche Mode - 2004 - DMBX The
+      Singles" gives "Depeche Mode", not the whole string.
+
+    Returns None when *folder* is the scan root, since the folder above it
+    isn't part of what the caller asked to look at.
+    """
+    if root is None or folder == root or folder.parent == folder:
+        return None
+
+    parent = folder.parent.name
+    if not parent or parent.startswith("#"):
+        return None
+
+    parent_artist, parent_album = parse_folder_name(parent)
+    if parent_artist:
+        return parent_artist
+
+    # The parent parsed as an album folder that names no artist of its own
+    # ("MTVExtreme - 2001"), so there is nothing to borrow. Only a plain
+    # "Radiohead"-style name, which parses to itself, is usable as-is.
+    return parent if parent_album == parent else None
+
+
+def describe_folder(folder: Path, root: Path | None = None) -> Album:
     """Work out which album *folder* holds, preferring tags over the folder name."""
     artist, album = _read_tags(_audio_files(folder))
     if artist and album:
         return Album(folder, artist, album, "tags")
 
     folder_artist, folder_album = parse_folder_name(folder.name)
-    merged_artist = artist or folder_artist
+    merged_artist = artist or folder_artist or artist_from_parent(folder, root)
     merged_album = album or folder_album
     if merged_artist or merged_album:
         source = "tags" if (artist or album) else "folder"
@@ -186,13 +218,13 @@ def find_album_folders(root: Path, *, recurse: bool = False) -> list[Album]:
     in the tree that directly contains audio files is returned.
     """
     if not recurse:
-        return [describe_folder(root)] if _audio_files(root) else []
+        return [describe_folder(root, root)] if _audio_files(root) else []
 
     albums: list[Album] = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
         if any(Path(f).suffix.lower() in AUDIO_EXTENSIONS for f in filenames):
-            albums.append(describe_folder(Path(dirpath)))
+            albums.append(describe_folder(Path(dirpath), root))
     return albums
 
 
