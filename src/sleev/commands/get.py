@@ -17,7 +17,7 @@ import argparse
 import logging
 from pathlib import Path
 
-from sleev.images import MIN_COVER_PIXELS, data_to_png, dimensions, to_png
+from sleev.images import MIN_COVER_PIXELS, data_to_png_bytes, dimensions, png_bytes, to_png
 from sleev.musicbrainz import SIZES, CoverArtClient, CoverArtError
 from sleev.scan import Album, find_album_folders, has_cover, strip_qualifiers
 
@@ -118,38 +118,77 @@ def keep_floor(args: argparse.Namespace) -> int:
     return min(args.min_size, int(args.size))
 
 
-def keep(existing: Path, album: Album, args: argparse.Namespace) -> str:
-    """Handle a cover we've decided is good enough, normalising it if asked."""
-    destination = album.path / f"{args.name}.png"
-    if not args.normalise or existing == destination:
-        log.info("skip   %s (has %s)", album.label, existing.name)
+def worth_keeping(cover: Path, args: argparse.Namespace) -> bool:
+    """Is this existing cover big enough, and readable, to leave in place?"""
+    size = dimensions(cover)
+    if size is None:
+        log.debug("%s is not a readable image, replacing it", cover)
+        return False
+    if min(size) >= keep_floor(args):
+        return True
+    log.debug("%s is %dx%d, replacing it", cover, *size)
+    return False
+
+
+def keep(usable: Path, album: Album, args: argparse.Namespace) -> str:
+    """Spread art we already have across the album's folders.
+
+    The parent of a box set often has the artwork while its discs have none,
+    so a cover worth keeping is copied into whichever folders lack one. That
+    also means such a box set never needs a lookup.
+    """
+    suffix = ".png" if args.normalise else usable.suffix
+    filled, converted = [], []
+
+    for folder in album.folders:
+        destination = folder / f"{args.name}{suffix}"
+        current = has_cover(folder)
+
+        if current is not None and worth_keeping(current, args):
+            # Already has art of its own; only the name and format may be off.
+            if args.normalise and current != destination:
+                converted.append((folder, current, destination))
+            continue
+        filled.append((folder, current, destination))
+
+    if not filled and not converted:
+        log.info("skip   %s (has %s)", album.label, usable.name)
         return "skipped"
 
     if args.dry_run:
-        log.info("would  %s: %s -> %s", album.label, existing.name, destination.name)
-        return "would-normalise"
+        for folder, _current, destination in converted + filled:
+            log.info("would  %s: %s -> %s", album.label, folder.name, destination.name)
+        return "would-normalise" if converted and not filled else "would-fill"
 
     try:
-        to_png(existing, destination)
+        # Encode once, then write the same bytes everywhere.
+        payload = png_bytes(usable) if args.normalise else usable.read_bytes()
+        for _folder, current, destination in filled:
+            destination.write_bytes(payload)
+            if current is not None and current != destination:
+                current.unlink()
+        for _folder, current, destination in converted:
+            to_png(current, destination)
     except OSError as exc:
-        log.error("error  %s: could not convert %s: %s", album.label, existing.name, exc)
+        log.error("error  %s: could not place %s: %s", album.label, usable.name, exc)
         return "failed"
 
-    log.info("conv   %s: %s -> %s", album.label, existing.name, destination.name)
+    if filled:
+        log.info("fill   %s -> %d folder(s)", album.label, len(filled))
+        return "filled"
+
+    log.info("conv   %s: %s -> %s", album.label, usable.name, f"{args.name}.png")
     return "normalised"
 
 
 def process(album: Album, client: CoverArtClient, args: argparse.Namespace) -> str:
     """Fetch and save art for one album. Returns a one-word outcome."""
-    existing = has_cover(album.path)
-    if existing and not args.overwrite:
-        size = dimensions(existing)
-        if size is None:
-            log.debug("%s is not a readable image, replacing it", existing)
-        elif min(size) >= keep_floor(args):
-            return keep(existing, album, args)
-        else:
-            log.debug("%s is %dx%d, replacing it", existing, *size)
+    if not args.overwrite:
+        # Any folder in the group with art worth keeping can supply the rest.
+        for folder in album.folders:
+            found = has_cover(folder)
+            if found is not None and worth_keeping(found, args):
+                return keep(found, album, args)
 
     if not album.album:
         log.warning("no id  %s (no album name in tags or folder name)", album.path)
@@ -181,25 +220,32 @@ def process(album: Album, client: CoverArtClient, args: argparse.Namespace) -> s
         log.warning("miss   %s (no art found)", album.label)
         return "not-found"
 
-    if args.normalise:
-        destination = album.path / f"{args.name}.png"
-        try:
-            data_to_png(cover.data, destination)
-        except OSError as exc:
-            log.error("error  %s: downloaded art wasn't a usable image: %s", album.label, exc)
-            return "failed"
+    try:
+        payload = data_to_png_bytes(cover.data) if args.normalise else cover.data
+    except OSError as exc:
+        log.error("error  %s: downloaded art wasn't a usable image: %s", album.label, exc)
+        return "failed"
+
+    suffix = ".png" if args.normalise else cover.extension
+    replaced = []
+    for folder in album.folders:
+        destination = folder / f"{args.name}{suffix}"
+        current = has_cover(folder)
+        destination.write_bytes(payload)
+        if current is not None and current != destination:
+            # Otherwise the folder keeps both, and players may prefer the old one.
+            current.unlink()
+            replaced.append(current)
+
+    where = f"{args.name}{suffix}"
+    if len(album.folders) > 1:
+        log.info("saved  %s -> %s in %d folder(s)", album.label, where, len(album.folders))
+    elif replaced:
+        log.info("saved  %s -> %s (replaced %s)", album.label, where, replaced[0].name)
     else:
-        destination = album.path / f"{args.name}{cover.extension}"
-        destination.write_bytes(cover.data)
+        log.info("saved  %s -> %s", album.label, where)
 
-    if existing and existing != destination:
-        # Otherwise the folder keeps both, and players may prefer the old one.
-        existing.unlink()
-        log.info("saved  %s -> %s (replaced %s)", album.label, destination.name, existing.name)
-        return "replaced"
-
-    log.info("saved  %s -> %s", album.label, destination.name)
-    return "saved"
+    return "replaced" if replaced else "saved"
 
 
 def run(args: argparse.Namespace) -> int:

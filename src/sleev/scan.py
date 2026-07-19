@@ -44,6 +44,11 @@ _FOLDER_ARTIST_ALBUM = re.compile(r"^(?P<artist>.+?)\s+-{1,2}\s+(?P<album>.+)$")
 
 _TRAILING_NOISE = re.compile(r"\s*[\(\[\{][^\)\]\}]*[\)\]\}]\s*$")
 
+# A box set's discs: either bare ("Disc 2") or repeating the album name
+# ("DMBX The Singles (Disc 3)").
+_DISC_ALONE = re.compile(r"^(?:disc|disk|cd)\s*\d+$", re.IGNORECASE)
+_DISC_SUFFIX = re.compile(r"[\(\[]\s*(?:disc|disk|cd)\s*\d+\s*[\)\]]\s*$", re.IGNORECASE)
+
 
 @dataclass(frozen=True)
 class Album:
@@ -53,6 +58,14 @@ class Album:
     artist: str | None
     album: str | None
     source: str  # "tags", "folder", or "unknown"
+    # A box set's disc folders. They hold the same album, so they get the same
+    # cover as `path` rather than a lookup each.
+    discs: tuple[Path, ...] = ()
+
+    @property
+    def folders(self) -> tuple[Path, ...]:
+        """Every folder that should end up with this album's artwork."""
+        return (self.path, *self.discs)
 
     @property
     def label(self) -> str:
@@ -194,20 +207,54 @@ def artist_from_parent(folder: Path, root: Path | None) -> str | None:
     return parent if parent_album == parent else None
 
 
-def describe_folder(folder: Path, root: Path | None = None) -> Album:
+def disc_folders(folder: Path, children: list[str]) -> list[Path]:
+    """The subfolders of *folder* that are discs of the album *folder* names.
+
+    Two layouts put "(Disc 1)" in a folder name, and only one of them is a box
+    set. `Artist/Album (Disc 1)` sits beside its sibling discs under the
+    artist, so the artist folder must not be mistaken for an album. The album
+    name is what tells them apart: a disc of `Artist/Album` repeats `Album`,
+    whereas the discs under an artist folder name a different album than the
+    artist does. A bare "Disc 2" is unambiguous — artists don't have those.
+    """
+    album = strip_qualifiers(parse_folder_name(folder.name)[1] or "")
+
+    discs = []
+    for name in children:
+        child = folder / name
+        if not _audio_files(child):
+            continue
+        if _DISC_ALONE.match(name.strip()):
+            discs.append(child)
+        elif _DISC_SUFFIX.search(name) and album:
+            _, child_album = parse_folder_name(name)
+            if child_album and strip_qualifiers(child_album) == album:
+                discs.append(child)
+    return sorted(discs)
+
+
+def describe_folder(folder: Path, root: Path | None = None, discs: tuple[Path, ...] = ()) -> Album:
     """Work out which album *folder* holds, preferring tags over the folder name."""
-    artist, album = _read_tags(_audio_files(folder))
+    # A box set's parent holds no audio of its own, so its discs are where the
+    # tags live — and they carry the album name the parent is missing.
+    files = _audio_files(folder)
+    for disc in discs:
+        if files:
+            break
+        files = _audio_files(disc)
+
+    artist, album = _read_tags(files)
     if artist and album:
-        return Album(folder, artist, album, "tags")
+        return Album(folder, artist, album, "tags", discs)
 
     folder_artist, folder_album = parse_folder_name(folder.name)
     merged_artist = artist or folder_artist or artist_from_parent(folder, root)
     merged_album = album or folder_album
     if merged_artist or merged_album:
         source = "tags" if (artist or album) else "folder"
-        return Album(folder, merged_artist, merged_album, source)
+        return Album(folder, merged_artist, merged_album, source, discs)
 
-    return Album(folder, None, None, "unknown")
+    return Album(folder, None, None, "unknown", discs)
 
 
 def find_album_folders(root: Path, *, recurse: bool = False) -> list[Album]:
@@ -218,13 +265,25 @@ def find_album_folders(root: Path, *, recurse: bool = False) -> list[Album]:
     in the tree that directly contains audio files is returned.
     """
     if not recurse:
+        children = sorted(entry.name for entry in root.iterdir() if entry.is_dir())
+        if discs := disc_folders(root, children):
+            return [describe_folder(root, root, tuple(discs))]
         return [describe_folder(root, root)] if _audio_files(root) else []
 
     albums: list[Album] = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        folder = Path(dirpath)
+
+        # A box set is one album: the parent takes the lookup, and its discs
+        # are pruned from the walk so they don't each get one of their own.
+        if discs := disc_folders(folder, dirnames):
+            albums.append(describe_folder(folder, root, tuple(discs)))
+            dirnames[:] = [d for d in dirnames if folder / d not in discs]
+            continue
+
         if any(Path(f).suffix.lower() in AUDIO_EXTENSIONS for f in filenames):
-            albums.append(describe_folder(Path(dirpath), root))
+            albums.append(describe_folder(folder, root))
     return albums
 
 

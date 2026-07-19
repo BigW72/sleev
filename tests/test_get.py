@@ -196,6 +196,70 @@ def test_both_lookups_missing_reports_not_found(tmp_path: Path) -> None:
     assert client.asked == ["All I Need [Single]", "All I Need"]
 
 
+def box_set(tmp_path: Path, *discs: str) -> Album:
+    for disc in discs:
+        (tmp_path / disc).mkdir(parents=True)
+    return Album(tmp_path, "Artist", "Boxed", "tags", tuple(tmp_path / d for d in discs))
+
+
+def test_a_download_lands_in_the_parent_and_every_disc(tmp_path: Path) -> None:
+    album = box_set(tmp_path, "Disc 1", "Disc 2")
+    client = FakeClient()
+
+    assert process(album, client, options()) == "saved"
+    assert client.calls == 1  # one lookup for the whole box set
+    for folder in album.folders:
+        assert (folder / "cover.png").exists()
+
+
+def test_art_in_the_parent_fills_the_discs_without_a_lookup(tmp_path: Path) -> None:
+    album = box_set(tmp_path, "Disc 1", "Disc 2")
+    write_image(tmp_path / "cover.png", 800)
+    client = FakeClient()
+
+    assert process(album, client, options()) == "filled"
+    assert client.calls == 0
+    for disc in album.discs:
+        assert (disc / "cover.png").exists()
+
+
+def test_a_fully_covered_box_set_is_skipped(tmp_path: Path) -> None:
+    album = box_set(tmp_path, "Disc 1", "Disc 2")
+    for folder in album.folders:
+        write_image(folder / "cover.png", 800)
+
+    assert process(album, FakeClient(), options()) == "skipped"
+
+
+def test_a_small_cover_in_one_disc_does_not_block_the_download(tmp_path: Path) -> None:
+    album = box_set(tmp_path, "Disc 1")
+    write_image(tmp_path / "cover.png", 800)
+    write_image(album.discs[0] / "front.jpg", 100)
+
+    assert process(album, FakeClient(), options()) == "filled"
+    # The undersized one is replaced by the parent's art, not left beside it.
+    assert not (album.discs[0] / "front.jpg").exists()
+    assert (album.discs[0] / "cover.png").exists()
+
+
+def test_dry_run_leaves_the_discs_untouched(tmp_path: Path) -> None:
+    album = box_set(tmp_path, "Disc 1", "Disc 2")
+    write_image(tmp_path / "cover.png", 800)
+
+    assert process(album, FakeClient(), options(dry_run=True)) == "would-fill"
+    assert not any((d / "cover.png").exists() for d in album.discs)
+
+
+def test_filling_discs_converts_to_png_when_normalising(tmp_path: Path) -> None:
+    album = box_set(tmp_path, "Disc 1")
+    write_image(tmp_path / "folder.jpg", 800)
+
+    assert process(album, FakeClient(), options(normalise=True)) == "filled"
+    for folder in album.folders:
+        with Image.open(folder / "cover.png") as image:
+            assert image.format == "PNG"
+
+
 @pytest.mark.parametrize(
     ("size", "min_size", "expected"),
     [

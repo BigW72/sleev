@@ -87,8 +87,8 @@ def test_find_album_folders_defaults_to_the_root_only(tmp_path: Path) -> None:
     root = tmp_path / "Artist - Album"
     root.mkdir()
     (root / "01.flac").touch()
-    (root / "CD2").mkdir()
-    (root / "CD2" / "01.flac").touch()
+    (root / "Bonus Tracks").mkdir()
+    (root / "Bonus Tracks" / "01.flac").touch()
 
     assert [a.path for a in find_album_folders(root)] == [root]
     assert len(find_album_folders(root, recurse=True)) == 2
@@ -151,6 +151,73 @@ def test_describe_folder_keeps_an_artist_from_the_folder_name(tmp_path: Path) ->
     described = describe_folder(album, tmp_path)
 
     assert described.artist == "Radiohead"
+
+
+def make_album(folder: Path, *discs: str) -> Path:
+    """An album folder holding only disc subfolders, as a box set does."""
+    folder.mkdir(parents=True)
+    for disc in discs:
+        (folder / disc).mkdir()
+        (folder / disc / "01.flac").touch()
+    return folder
+
+
+def test_box_set_is_one_album_covering_every_disc(tmp_path: Path) -> None:
+    box = make_album(
+        tmp_path / "Artist" / "Depeche Mode - 2004 - DMBX The Singles",
+        "DMBX The Singles (Disc 1)",
+        "DMBX The Singles (Disc 2)",
+    )
+
+    found = find_album_folders(tmp_path, recurse=True)
+
+    # One lookup, not one per disc, and the parent gets art despite holding
+    # no audio of its own.
+    assert [a.path for a in found] == [box]
+    assert [d.name for d in found[0].discs] == [
+        "DMBX The Singles (Disc 1)",
+        "DMBX The Singles (Disc 2)",
+    ]
+    assert found[0].folders == (box, *found[0].discs)
+    assert found[0].album == "DMBX The Singles"
+
+
+def test_bare_disc_folders_are_grouped(tmp_path: Path) -> None:
+    box = make_album(tmp_path / "Radiohead - 2000 - Kid A", "Disc 1", "CD2")
+
+    found = find_album_folders(tmp_path, recurse=True)
+
+    assert [a.path for a in found] == [box]
+    assert len(found[0].discs) == 2
+    assert found[0].album == "Kid A"
+
+
+def test_discs_beside_each_other_under_an_artist_are_not_grouped(tmp_path: Path) -> None:
+    # Layout A: the discs are siblings under the artist, so the artist folder
+    # must not be mistaken for an album.
+    artist = tmp_path / "Basement Jaxx"
+    for disc in ("Basement Jaxx - 2005 - The Singles (Disc 1)",
+                 "Basement Jaxx - 2005 - The Singles (Disc 2)"):
+        (artist / disc).mkdir(parents=True)
+        (artist / disc / "01.flac").touch()
+
+    found = find_album_folders(tmp_path, recurse=True)
+
+    assert [a.path.name for a in found] == [
+        "Basement Jaxx - 2005 - The Singles (Disc 1)",
+        "Basement Jaxx - 2005 - The Singles (Disc 2)",
+    ]
+    assert all(a.discs == () for a in found)
+    assert all(a.album == "The Singles" for a in found)
+
+
+def test_a_box_set_is_grouped_without_recursing(tmp_path: Path) -> None:
+    box = make_album(tmp_path / "Artist - 1999 - Boxed", "Boxed (Disc 1)", "Boxed (Disc 2)")
+
+    found = find_album_folders(box)
+
+    assert [a.path for a in found] == [box]
+    assert len(found[0].discs) == 2
 
 
 def test_has_cover_recognises_common_filenames(tmp_path: Path) -> None:

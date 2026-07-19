@@ -88,6 +88,30 @@ the whole tree.
 
 Your audio files are never modified.
 
+### Box sets
+
+A multi-disc album laid out as `Artist/Album/Disc N` is treated as one album, not one
+per disc. The cover is looked up once and written into the album folder *and* every
+disc folder, so the parent gets artwork even though it holds no audio itself, and the
+discs don't each burn a rate-limited lookup. The album name comes from the discs' tags
+when the parent has none of its own.
+
+```
+Depeche Mode - 2004 - DMBX The Singles/     <- cover.png, one lookup
+    DMBX The Singles (Disc 1)/              <- cover.png
+    DMBX The Singles (Disc 2)/              <- cover.png
+    ...
+```
+
+Discs may be named `Disc 2`, `CD2`, or repeat the album (`DMBX The Singles (Disc 2)`).
+If any folder in the set already has art worth keeping, it fills the others and no
+lookup happens at all.
+
+The older layout — `Artist/Album (Disc 1)` and `Artist/Album (Disc 2)` sitting beside
+each other under the artist — still works as before, each treated as its own album.
+They're told apart by the album name: a disc of `Artist/Album` repeats `Album`, while
+discs under an artist folder name something the artist folder doesn't.
+
 ### Existing covers
 
 A folder already containing `cover.*`, `folder.*`, `front.*`, or similar is skipped —

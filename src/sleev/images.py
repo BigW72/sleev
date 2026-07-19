@@ -28,7 +28,18 @@ def dimensions(path: Path) -> tuple[int, int] | None:
         return None
 
 
-def _save_png(image: Image.Image, destination: Path) -> None:
+def png_bytes(source: Path) -> bytes:
+    """Re-encode the image at *source* as PNG, without writing a file.
+
+    A box set converts once and writes the result into every disc folder.
+    """
+    buffer = BytesIO()
+    with Image.open(source) as image:
+        _save_png(image, buffer)
+    return buffer.getvalue()
+
+
+def _save_png(image: Image.Image, destination: Path | BytesIO) -> None:
     # Drop a palette or CMYK profile for something PNG stores predictably,
     # keeping alpha where the original had it.
     mode = "RGBA" if "A" in image.getbands() else "RGB"
@@ -50,10 +61,12 @@ def to_png(source: Path, destination: Path) -> None:
     source.unlink()
 
 
-def data_to_png(data: bytes, destination: Path) -> None:
-    """Write freshly downloaded image *data* to *destination* as a PNG."""
+def data_to_png_bytes(data: bytes) -> bytes:
+    """Re-encode freshly downloaded image *data* as PNG."""
+    buffer = BytesIO()
     with Image.open(BytesIO(data)) as image:
-        _save_png(image, destination)
+        _save_png(image, buffer)
+    return buffer.getvalue()
 
 
 def to_icns(source: Path, destination: Path) -> None:
