@@ -127,8 +127,16 @@ def describe_folder(folder: Path) -> Album:
     return Album(folder, None, None, "unknown")
 
 
-def find_album_folders(root: Path) -> list[Album]:
-    """Every folder under *root* that directly contains audio files."""
+def find_album_folders(root: Path, *, recurse: bool = False) -> list[Album]:
+    """Album folders at *root*.
+
+    By default only *root* itself is considered, and it counts as an album
+    folder if it directly contains audio files. With *recurse*, every folder
+    in the tree that directly contains audio files is returned.
+    """
+    if not recurse:
+        return [describe_folder(root)] if _audio_files(root) else []
+
     albums: list[Album] = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))

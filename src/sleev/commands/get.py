@@ -1,8 +1,11 @@
 """sleev get — download missing cover art into album folders.
 
-Walks a tree, treats every folder holding audio files as an album, identifies
-it from tags (falling back to the folder name), then saves the front cover
-from the Cover Art Archive alongside the audio. Audio files are not modified.
+Treats a folder holding audio files as an album, identifies it from tags
+(falling back to the folder name), then saves the front cover from the Cover
+Art Archive alongside the audio. Audio files are not modified.
+
+Only PATH itself is scanned unless `--recurse` is given, which walks the whole
+tree and treats every folder holding audio files as an album.
 
 Folders that already have a cover are skipped unless `--overwrite` is given.
 """
@@ -25,10 +28,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "get",
         help="download missing cover art from the Cover Art Archive",
         description=(
-            "Scan PATH for album folders and download each one's front cover "
-            "from the Cover Art Archive. Albums are identified from audio tags "
-            "where possible, otherwise from the folder name. MusicBrainz limits "
-            "lookups to one per second, so expect roughly two seconds per album."
+            "Download PATH's front cover from the Cover Art Archive, or with "
+            "--recurse, that of every album folder beneath it. Albums are "
+            "identified from audio tags where possible, otherwise from the "
+            "folder name. MusicBrainz limits lookups to one per second, so "
+            "expect roughly two seconds per album."
         ),
     )
     parser.add_argument(
@@ -38,6 +42,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         type=Path,
         metavar="PATH",
         help="folder to scan (default: current directory)",
+    )
+    parser.add_argument(
+        "-r",
+        "--recurse",
+        action="store_true",
+        help="also scan subfolders, not just PATH itself",
     )
     parser.add_argument(
         "-n",
@@ -114,9 +124,12 @@ def run(args: argparse.Namespace) -> int:
         log.error("%s is not a directory", root)
         return 2
 
-    albums = find_album_folders(root)
+    albums = find_album_folders(root, recurse=args.recurse)
     if not albums:
-        log.error("no folders containing audio files under %s", root)
+        if args.recurse:
+            log.error("no folders containing audio files under %s", root)
+        else:
+            log.error("%s contains no audio files (use --recurse to scan subfolders)", root)
         return 1
     log.info("found %d album folder(s) under %s\n", len(albums), root)
 

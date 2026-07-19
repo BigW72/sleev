@@ -13,6 +13,12 @@ def test_get_is_registered_and_dispatches_to_its_run() -> None:
     assert str(args.root) == "/music"
 
 
+def test_recurse_is_off_by_default_and_has_a_short_form() -> None:
+    assert build_parser().parse_args(["get", "/music"]).recurse is False
+    assert build_parser().parse_args(["get", "/music", "-r"]).recurse is True
+    assert build_parser().parse_args(["get", "/music", "--recurse"]).recurse is True
+
+
 def test_verbose_accepted_before_subcommand() -> None:
     assert build_parser().parse_args(["-v", "get"]).verbose is True
 
