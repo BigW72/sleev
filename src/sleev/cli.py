@@ -10,9 +10,9 @@ import logging
 import sys
 
 from sleev import __version__
-from sleev.commands import get
+from sleev.commands import get, iconify
 
-_COMMAND_MODULES = (get,)
+_COMMAND_MODULES = (get, iconify)
 
 
 def build_parser() -> argparse.ArgumentParser:

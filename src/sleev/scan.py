@@ -14,10 +14,11 @@ AUDIO_EXTENSIONS = frozenset(
     {".mp3", ".flac", ".m4a", ".m4b", ".mp4", ".ogg", ".oga", ".opus", ".wma", ".wav", ".aiff", ".ape", ".wv"}
 )
 
-IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif"})
-
-# Files that already count as a folder's cover art, so we can skip the folder.
-EXISTING_COVER_STEMS = frozenset({"cover", "folder", "front", "album", "albumart", "albumartsmall"})
+# Files that count as a folder's cover art. Both lists are in preference order:
+# a folder holding cover.png and folder.jpg yields the former, so repeated runs
+# pick the same file rather than whichever the filesystem listed first.
+COVER_STEMS = ("cover", "folder", "front", "album", "albumart", "albumartsmall")
+COVER_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
 
 # Tag keys are checked in order; the first one present wins.
 ARTIST_KEYS = ("albumartist", "album artist", "artist", "performer")
@@ -48,12 +49,16 @@ class Album:
 
 
 def has_cover(folder: Path) -> Path | None:
-    """Return an existing cover image in *folder*, if there is one."""
+    """Return the best existing cover image in *folder*, if there is one."""
+    found: dict[tuple[str, str], Path] = {}
     for entry in folder.iterdir():
-        if not entry.is_file():
-            continue
-        if entry.suffix.lower() in IMAGE_EXTENSIONS and entry.stem.lower() in EXISTING_COVER_STEMS:
-            return entry
+        if entry.is_file():
+            found.setdefault((entry.stem.lower(), entry.suffix.lower()), entry)
+
+    for stem in COVER_STEMS:
+        for extension in COVER_EXTENSIONS:
+            if match := found.get((stem, extension)):
+                return match
     return None
 
 
@@ -143,3 +148,21 @@ def find_album_folders(root: Path, *, recurse: bool = False) -> list[Album]:
         if any(Path(f).suffix.lower() in AUDIO_EXTENSIONS for f in filenames):
             albums.append(describe_folder(Path(dirpath)))
     return albums
+
+
+def find_cover_folders(root: Path, *, recurse: bool = False) -> list[Path]:
+    """Folders at *root* that hold a cover image, whether or not they hold audio.
+
+    Unlike `find_album_folders` this doesn't care about audio: an artist folder
+    or a film folder with its own artwork counts too.
+    """
+    if not recurse:
+        return [root] if has_cover(root) else []
+
+    folders: list[Path] = []
+    for dirpath, dirnames, _filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        folder = Path(dirpath)
+        if has_cover(folder):
+            folders.append(folder)
+    return folders

@@ -54,3 +54,18 @@ def data_to_png(data: bytes, destination: Path) -> None:
     """Write freshly downloaded image *data* to *destination* as a PNG."""
     with Image.open(BytesIO(data)) as image:
         _save_png(image, destination)
+
+
+def to_icns(source: Path, destination: Path) -> None:
+    """Write the image at *source* as a macOS icon at *destination*.
+
+    The art is padded out to a square with transparency first. ICNS holds only
+    square icons, and Pillow will happily stretch a 600x900 poster to fill one,
+    so the padding is what keeps the aspect ratio.
+    """
+    with Image.open(source) as image:
+        art = image.convert("RGBA")
+        side = max(art.size)
+        canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+        canvas.paste(art, ((side - art.width) // 2, (side - art.height) // 2))
+        canvas.save(destination, "ICNS")

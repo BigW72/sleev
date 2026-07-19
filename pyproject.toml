@@ -8,6 +8,8 @@ dependencies = [
     "httpx>=0.27",
     "mutagen>=1.47",
     "pillow>=10.0",
+    # Only needed by `sleev iconify`, which is macOS-only anyway.
+    "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",
 ]
 
 [project.scripts]

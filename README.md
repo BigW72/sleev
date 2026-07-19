@@ -23,6 +23,7 @@ sleev <command> [options]
 | Command | Does |
 | --- | --- |
 | `get` | Download missing cover art from the Cover Art Archive. |
+| `iconify` | Use each folder's cover art as its Finder icon (macOS only). |
 
 Run `sleev <command> --help` for a command's full options.
 
@@ -79,6 +80,37 @@ native extension and a good `folder.jpg` is left as it is.
 # Tidy an existing library: everything ends up as cover.png, small art refetched
 uv run sleev get ~/Music --recurse --normalise
 ```
+
+### `sleev iconify`
+
+Sets a folder's cover art as its Finder icon, so a library browses as artwork rather
+than a wall of identical folders. **macOS only** — it calls `NSWorkspace.setIcon:`,
+which has no cross-platform equivalent.
+
+```sh
+# One folder
+uv run sleev iconify "~/Music/Radiohead - Kid A"
+
+# A whole library, artist folders included
+uv run sleev iconify ~/Music --recurse
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `-r`, `--recurse` | Iconify subfolders too, not just `PATH` itself. |
+| `-n`, `--dry-run` | Report what would happen; change nothing. |
+| `-f`, `--force` | Re-apply icons to folders that already have one. |
+
+Unlike `get`, this doesn't care about audio: any folder holding a cover image
+qualifies, so artist folders and box sets get artwork too. The same filenames apply
+(`cover.*`, `folder.*`, `front.*`, …), preferring `cover.png` when several exist.
+
+Art is padded out to a square with transparency before conversion. Icons must be
+square, and without the padding a tall poster gets stretched to fill one.
+
+Folders whose icon is already set are skipped, which is what makes a re-run cheap;
+`--force` overrides that. macOS records the icon in a file named `Icon\r` inside the
+folder — that carriage return is real, and is how the check works.
 
 ## Rate limiting
 
