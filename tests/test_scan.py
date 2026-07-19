@@ -182,6 +182,23 @@ def test_box_set_is_one_album_covering_every_disc(tmp_path: Path) -> None:
     assert found[0].album == "DMBX The Singles"
 
 
+def test_the_canonical_layout(tmp_path: Path) -> None:
+    """Artist/Album/Album (Disc N) — the layout this library is kept in."""
+    (tmp_path / "Radiohead" / "OK Computer").mkdir(parents=True)
+    (tmp_path / "Radiohead" / "OK Computer" / "01.flac").touch()
+    make_album(tmp_path / "Radiohead" / "Kid A", "Kid A (Disc 1)", "Kid A (Disc 2)")
+
+    found = {a.path.name: a for a in find_album_folders(tmp_path, recurse=True)}
+
+    # The artist folder is not an album, and the single-disc sibling is
+    # unaffected by the box set beside it.
+    assert set(found) == {"Kid A", "OK Computer"}
+    assert found["Kid A"].artist == "Radiohead"
+    assert found["Kid A"].album == "Kid A"
+    assert [d.name for d in found["Kid A"].discs] == ["Kid A (Disc 1)", "Kid A (Disc 2)"]
+    assert found["OK Computer"].discs == ()
+
+
 def test_bare_disc_folders_are_grouped(tmp_path: Path) -> None:
     box = make_album(tmp_path / "Radiohead - 2000 - Kid A", "Disc 1", "CD2")
 
