@@ -7,13 +7,17 @@ Art Archive alongside the audio. Audio files are not modified.
 Only PATH itself is scanned unless `--recurse` is given, which walks the whole
 tree and treats every folder holding audio files as an album.
 
-Folders that already have a cover are skipped unless `--overwrite` is given.
+A folder that already has a cover is skipped, unless that cover is too small to
+be worth keeping (see `--min-size`) or `--overwrite` is given. `--normalise`
+makes every cover the folder ends up with a PNG named after `--name`, whether
+it was downloaded or already on disk.
 """
 
 import argparse
 import logging
 from pathlib import Path
 
+from sleev.images import MIN_COVER_PIXELS, data_to_png, dimensions, to_png
 from sleev.musicbrainz import SIZES, CoverArtClient, CoverArtError
 from sleev.scan import Album, find_album_folders, has_cover
 
@@ -75,6 +79,22 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="filename stem to write; extension follows the image type (default: %(default)s)",
     )
     parser.add_argument(
+        "--min-size",
+        type=int,
+        default=MIN_COVER_PIXELS,
+        metavar="PX",
+        help=(
+            "existing covers smaller than this on either side are replaced "
+            "rather than kept (default: %(default)s)"
+        ),
+    )
+    parser.add_argument(
+        "--normalise",
+        "--normalize",
+        action="store_true",
+        help="write every cover as STEM.png, converting downloads and existing art alike",
+    )
+    parser.add_argument(
         "--limit",
         type=int,
         default=5,
@@ -87,12 +107,49 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 # ── implementation ───────────────────────────────────────────────────────────
 
 
+def keep_floor(args: argparse.Namespace) -> int:
+    """The size an existing cover must reach to be worth keeping.
+
+    Normally --min-size, but never more than the art we would download to
+    replace it: fetching at --size 250 must not throw away a 400px cover.
+    """
+    if args.size == "original":
+        return args.min_size
+    return min(args.min_size, int(args.size))
+
+
+def keep(existing: Path, album: Album, args: argparse.Namespace) -> str:
+    """Handle a cover we've decided is good enough, normalising it if asked."""
+    destination = album.path / f"{args.name}.png"
+    if not args.normalise or existing == destination:
+        log.info("skip   %s (has %s)", album.label, existing.name)
+        return "skipped"
+
+    if args.dry_run:
+        log.info("would  %s: %s -> %s", album.label, existing.name, destination.name)
+        return "would-normalise"
+
+    try:
+        to_png(existing, destination)
+    except OSError as exc:
+        log.error("error  %s: could not convert %s: %s", album.label, existing.name, exc)
+        return "failed"
+
+    log.info("conv   %s: %s -> %s", album.label, existing.name, destination.name)
+    return "normalised"
+
+
 def process(album: Album, client: CoverArtClient, args: argparse.Namespace) -> str:
     """Fetch and save art for one album. Returns a one-word outcome."""
     existing = has_cover(album.path)
     if existing and not args.overwrite:
-        log.info("skip   %s (has %s)", album.label, existing.name)
-        return "skipped"
+        size = dimensions(existing)
+        if size is None:
+            log.debug("%s is not a readable image, replacing it", existing)
+        elif min(size) >= keep_floor(args):
+            return keep(existing, album, args)
+        else:
+            log.debug("%s is %dx%d, replacing it", existing, *size)
 
     if not album.album:
         log.warning("no id  %s (no album name in tags or folder name)", album.path)
@@ -112,8 +169,23 @@ def process(album: Album, client: CoverArtClient, args: argparse.Namespace) -> s
         log.warning("miss   %s (no art found)", album.label)
         return "not-found"
 
-    destination = album.path / f"{args.name}{cover.extension}"
-    destination.write_bytes(cover.data)
+    if args.normalise:
+        destination = album.path / f"{args.name}.png"
+        try:
+            data_to_png(cover.data, destination)
+        except OSError as exc:
+            log.error("error  %s: downloaded art wasn't a usable image: %s", album.label, exc)
+            return "failed"
+    else:
+        destination = album.path / f"{args.name}{cover.extension}"
+        destination.write_bytes(cover.data)
+
+    if existing and existing != destination:
+        # Otherwise the folder keeps both, and players may prefer the old one.
+        existing.unlink()
+        log.info("saved  %s -> %s (replaced %s)", album.label, destination.name, existing.name)
+        return "replaced"
+
     log.info("saved  %s -> %s", album.label, destination.name)
     return "saved"
 

@@ -51,12 +51,34 @@ the whole tree.
 | `-n`, `--dry-run` | Report what would happen; download nothing. |
 | `-f`, `--overwrite` | Replace covers that already exist. |
 | `-s`, `--size` | `250`, `500` (default), `1200`, or `original`. |
+| `--min-size` | Existing covers smaller than this are replaced (default 500). |
+| `--normalise` | Write every cover as `cover.png`, downloaded or existing. |
 | `--name` | Filename stem to write (default `cover`; extension follows the image type). |
 | `--limit` | MusicBrainz candidates to try per album (default 5). |
 | `-v`, `--verbose` | Show each lookup as it happens. Accepted before or after the command. |
 
-Folders that already contain `cover.*`, `folder.*`, `front.*`, or similar are skipped
-unless `--overwrite` is passed. Your audio files are never modified.
+Your audio files are never modified.
+
+### Existing covers
+
+A folder already containing `cover.*`, `folder.*`, `front.*`, or similar is skipped —
+but only if that image is at least 500×500. Anything smaller is treated as not good
+enough, and the old file is deleted once its replacement has downloaded, so the folder
+doesn't keep both. Files that aren't readable images are replaced the same way.
+
+`--min-size` moves that threshold. It is capped at `--size`, so `--size 250` will never
+throw away a 400×400 cover to fetch a smaller one.
+
+`--normalise` (`--normalize` also works) makes every folder end up with a single
+`cover.png`. Art already on disk that's worth keeping is re-encoded and the original
+removed; freshly downloaded art is converted on the way in, rather than being saved
+under whatever extension the archive served. Without the flag, downloads keep their
+native extension and a good `folder.jpg` is left as it is.
+
+```sh
+# Tidy an existing library: everything ends up as cover.png, small art refetched
+uv run sleev get ~/Music --recurse --normalise
+```
 
 ## Rate limiting
 
