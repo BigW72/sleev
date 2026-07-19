@@ -19,7 +19,7 @@ from pathlib import Path
 
 from sleev.images import MIN_COVER_PIXELS, data_to_png, dimensions, to_png
 from sleev.musicbrainz import SIZES, CoverArtClient, CoverArtError
-from sleev.scan import Album, find_album_folders, has_cover
+from sleev.scan import Album, find_album_folders, has_cover, strip_qualifiers
 
 log = logging.getLogger(__name__)
 
@@ -159,11 +159,23 @@ def process(album: Album, client: CoverArtClient, args: argparse.Namespace) -> s
         log.info("would  %s [%s]", album.label, album.source)
         return "would-fetch"
 
-    try:
-        cover = client.find_cover(album.artist, album.album, size=args.size, limit=args.limit)
-    except CoverArtError as exc:
-        log.error("error  %s: %s", album.label, exc)
-        return "failed"
+    # Tags routinely carry an edition qualifier the archive doesn't know about,
+    # so a miss on "Animals [1997 Remaster]" is worth retrying as "Animals".
+    titles = [album.album]
+    if (simpler := strip_qualifiers(album.album)) != album.album:
+        titles.append(simpler)
+
+    cover = None
+    for title in titles:
+        if title != album.album:
+            log.debug("retrying %s as %r", album.label, title)
+        try:
+            cover = client.find_cover(album.artist, title, size=args.size, limit=args.limit)
+        except CoverArtError as exc:
+            log.error("error  %s: %s", album.label, exc)
+            return "failed"
+        if cover is not None:
+            break
 
     if cover is None:
         log.warning("miss   %s (no art found)", album.label)

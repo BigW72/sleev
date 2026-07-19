@@ -2,7 +2,28 @@ from pathlib import Path
 
 import pytest
 
-from sleev.scan import find_album_folders, has_cover, parse_folder_name
+from sleev.scan import find_album_folders, has_cover, parse_folder_name, strip_qualifiers
+
+
+@pytest.mark.parametrize(
+    ("album", "expected"),
+    [
+        ("Kid A", "Kid A"),
+        ("Animals [1997 Remaster]", "Animals"),
+        ("A2G (EP)", "A2G"),
+        ("Beck - Guero [Deluxe Version]", "Beck - Guero"),
+        # Tags stack qualifiers, so stripping has to repeat.
+        ("The Annual 2009 (Disc 2) (Mixed by Goodwill) [AU]", "The Annual 2009"),
+        ("Amon Tobin (Boxset) [Downloads]", "Amon Tobin"),
+        # A leading bracket is part of the title, not a qualifier.
+        ("(Who's Afraid Of?) The Art of Noise", "(Who's Afraid Of?) The Art of Noise"),
+        # Nothing but a qualifier: better to search it than an empty string.
+        ("(EP)", "(EP)"),
+        ("", ""),
+    ],
+)
+def test_strip_qualifiers(album: str, expected: str) -> None:
+    assert strip_qualifiers(album) == expected
 
 
 @pytest.mark.parametrize(

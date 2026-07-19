@@ -106,6 +106,21 @@ def _read_tags(files: list[Path]) -> tuple[str | None, str | None]:
     return artist, album
 
 
+def strip_qualifiers(album: str) -> str:
+    """Drop trailing "(Deluxe)"-style qualifiers from an album title.
+
+    Tags stack these — "The Annual 2009 (Disc 2) (Mixed by Goodwill) [AU]" —
+    so this strips repeatedly. A title that is nothing but a qualifier is left
+    alone rather than reduced to an empty string.
+    """
+    title = album.strip()
+    while True:
+        shorter = _TRAILING_NOISE.sub("", title).strip()
+        if shorter == title or not shorter:
+            return title
+        title = shorter
+
+
 def parse_folder_name(name: str) -> tuple[str | None, str | None]:
     """Best-effort split of a folder name into (artist, album)."""
     cleaned = _TRAILING_NOISE.sub("", name).strip()

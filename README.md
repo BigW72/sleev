@@ -8,6 +8,13 @@ library with `--recurse`.
 Albums are identified from the audio files' tags (`albumartist`/`artist` + `album`),
 falling back to parsing the folder name when tags are missing.
 
+When a lookup finds nothing, it's retried with trailing qualifiers stripped from the
+album title — `Animals [1997 Remaster]` becomes `Animals`, and stacked qualifiers like
+`The Annual 2009 (Disc 2) (Mixed by Goodwill) [AU]` come off in one go. The archive
+rarely indexes editions under their qualified name, so this recovers a lot of covers.
+The second lookup only happens on a miss, and only when stripping actually changes the
+title.
+
 ## Install
 
 ```sh

@@ -11,14 +11,25 @@ from sleev.scan import Album
 
 
 class FakeClient:
-    """Stands in for CoverArtClient, handing back a fixed 500x500 PNG."""
+    """Stands in for CoverArtClient, handing back a fixed 500x500 PNG.
 
-    def __init__(self, cover: Cover | None = None) -> None:
+    Pass *answers_for* to make it a miss for every other title, which is how
+    the qualifier-stripping retry gets exercised.
+    """
+
+    def __init__(self, cover: Cover | None = None, answers_for: str | None = None) -> None:
         self.cover = cover if cover is not None else Cover(png(500), ".png", "mbid")
-        self.calls = 0
+        self.answers_for = answers_for
+        self.asked: list[str | None] = []
+
+    @property
+    def calls(self) -> int:
+        return len(self.asked)
 
     def find_cover(self, artist: str | None, album: str | None, **_kwargs: object) -> Cover | None:
-        self.calls += 1
+        self.asked.append(album)
+        if self.answers_for is not None and album != self.answers_for:
+            return None
         return self.cover
 
 
@@ -151,6 +162,38 @@ def test_overwrite_replaces_even_a_big_cover(album: Album) -> None:
 
     assert process(album, FakeClient(), options(overwrite=True)) == "replaced"
     assert not (album.path / "folder.jpg").exists()
+
+
+def test_a_miss_is_retried_without_qualifiers(tmp_path: Path) -> None:
+    album = Album(tmp_path, "Pink Floyd", "Animals [1997 Remaster]", "tags")
+    client = FakeClient(answers_for="Animals")
+
+    assert process(album, client, options()) == "saved"
+    assert client.asked == ["Animals [1997 Remaster]", "Animals"]
+
+
+def test_a_plain_title_is_not_looked_up_twice(tmp_path: Path) -> None:
+    album = Album(tmp_path, "Radiohead", "Kid A", "tags")
+    client = FakeClient(answers_for="nothing matches")
+
+    assert process(album, client, options()) == "not-found"
+    assert client.asked == ["Kid A"]
+
+
+def test_the_qualified_title_wins_when_it_has_art(tmp_path: Path) -> None:
+    album = Album(tmp_path, "Beck", "Guero [Deluxe Version]", "tags")
+    client = FakeClient()
+
+    assert process(album, client, options()) == "saved"
+    assert client.asked == ["Guero [Deluxe Version]"]
+
+
+def test_both_lookups_missing_reports_not_found(tmp_path: Path) -> None:
+    album = Album(tmp_path, "Air", "All I Need [Single]", "tags")
+    client = FakeClient(answers_for="nothing matches")
+
+    assert process(album, client, options()) == "not-found"
+    assert client.asked == ["All I Need [Single]", "All I Need"]
 
 
 @pytest.mark.parametrize(
