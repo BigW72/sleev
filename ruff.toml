@@ -1,1 +1,53 @@
-extend = "../_config/ruff.toml"
+# ruff.toml — project linting and formatting configuration
+# Docs: https://docs.astral.sh/ruff/configuration/
+#
+# Inlined from the shared config in ~/Code/_config/ruff.toml so the repo lints
+# standalone after a clone. Keep the rule selection in sync with that file.
+
+line-length = 96
+target-version = "py312"
+
+[lint]
+# E/W  — pycodestyle (style errors/warnings)
+# F    — pyflakes (undefined names, unused imports, etc.)
+# I    — isort (import ordering)
+# N    — pep8-naming conventions
+# UP   — pyupgrade (modernise syntax for target-version)
+# B    — flake8-bugbear (likely bugs and design issues)
+# C4   — flake8-comprehensions (simpler comprehensions)
+# SIM  — flake8-simplify (simplifiable code patterns)
+# RUF  — ruff-specific rules
+select = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
+
+ignore = [
+    "E501",   # line too long — handled by formatter, not linter
+    "SIM108", # ternary operator — sometimes less readable than if/else
+]
+
+fixable = ["ALL"]
+unfixable = []
+
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "*.egg-info",
+    "dist",
+    "build",
+]
+
+[lint.per-file-ignores]
+# Tests: allow assert statements and "magic" values
+"tests/**/*.py" = ["S101", "B011", "RUF012"]
+# __init__.py: allow unused imports (re-exports)
+"__init__.py"   = ["F401"]
+
+[lint.isort]
+known-first-party = ["sleev"]
+force-sort-within-sections = true
+
+[format]
+quote-style = "double"
+indent-style = "space"
+# Trailing commas in multi-line structures — keeps diffs cleaner
+skip-magic-trailing-comma = false
