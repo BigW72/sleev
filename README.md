@@ -6,7 +6,20 @@ downloads its front cover from the
 library with `--recurse`.
 
 Albums are identified from the audio files' tags (`albumartist`/`artist` + `album`),
-falling back to parsing the folder name when tags are missing.
+falling back to parsing the folder name when tags are missing. These layouts are
+understood, tried in order:
+
+| Folder name | Artist | Album |
+| --- | --- | --- |
+| `AC DC - 1979 - Highway To Hell` | `AC DC` | `Highway To Hell` |
+| `A Clockwork Orange (OST) - 1972` | — | `A Clockwork Orange` |
+| `Radiohead - Kid A` | `Radiohead` | `Kid A` |
+| `Kid A` | — | `Kid A` |
+
+Order matters: `Dr. Dre - 1999 - 2001` is an album called `2001`, not a year, and
+without the year-aware pattern `A Clockwork Orange (OST) - 1972` would parse as an
+artist named after the film. Trailing `[FLAC]`-style tags are dropped, unless the
+title is nothing but brackets — Sigur Rós really did call an album `( )`.
 
 When a lookup finds nothing, it's retried with trailing qualifiers stripped from the
 album title — `Animals [1997 Remaster]` becomes `Animals`, and stacked qualifiers like

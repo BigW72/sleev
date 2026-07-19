@@ -34,6 +34,28 @@ def test_strip_qualifiers(album: str, expected: str) -> None:
         ("Boards of Canada -- Geogaddi [FLAC]", ("Boards of Canada", "Geogaddi")),
         ("Kid A", (None, "Kid A")),
         ("", (None, None)),
+        # "Artist - YYYY - Album", the dominant layout in folder-named libraries.
+        ("AC DC - 1979 - Highway To Hell", ("AC DC", "Highway To Hell")),
+        ("AC DC - 1979 - Highway To Hell [2003 Remaster]", ("AC DC", "Highway To Hell")),
+        # The album may itself contain a dash.
+        (
+            "Angelo Badalamenti - 2007 - Twin Peaks - Season Two (OST)",
+            ("Angelo Badalamenti", "Twin Peaks - Season Two"),
+        ),
+        # Albums that are years must survive the year pattern.
+        ("Dr. Dre - 1999 - 2001", ("Dr. Dre", "2001")),
+        ("Taylor Swift - 2014 - 1989", ("Taylor Swift", "1989")),
+        ("Summer Trance Top 50 - 2013 - 2013", ("Summer Trance Top 50", "2013")),
+        ("The Beatles - 1993 - 1962-1966", ("The Beatles", "1962-1966")),
+        # "Album (OST) - YYYY" carries no artist; the generic pattern would
+        # otherwise read the film as the artist and the year as the album.
+        ("A Clockwork Orange (OST) - 1972", (None, "A Clockwork Orange")),
+        ("(500) Days Of Summer (OST) - 2009", (None, "(500) Days Of Summer")),
+        # A title that is nothing but brackets is not noise.
+        ("Sigur Rós - 2002 - ( )", ("Sigur Rós", "( )")),
+        # A leading bracket belongs to the title.
+        ("Art of Noise - 1984 - (Who's Afraid Of?) The Art of Noise",
+         ("Art of Noise", "(Who's Afraid Of?) The Art of Noise")),
     ],
 )
 def test_parse_folder_name(name: str, expected: tuple[str | None, str | None]) -> None:

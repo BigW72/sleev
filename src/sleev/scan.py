@@ -27,8 +27,21 @@ ALBUM_KEYS = ("album",)
 # How many audio files to read per folder before deciding on artist/album.
 MAX_FILES_SAMPLED = 12
 
-# "Artist - Album", "Artist - Album (2004)", "Artist -- Album [FLAC]"
-_FOLDER_PATTERN = re.compile(r"^(?P<artist>.+?)\s+-{1,2}\s+(?P<album>.+)$")
+_YEAR = r"(?:19|20)\d{2}"
+_DASH = r"\s+-{1,2}\s+"
+
+# Patterns are tried in this order; the first match wins. Order matters more
+# than it looks: "Dr. Dre - 1999 - 2001" is an album actually called "2001",
+# and "A Clockwork Orange (OST) - 1972" would otherwise parse as an artist
+# named after the film with an album called "1972".
+#
+# "Artist - 1979 - Album", the dominant layout in folder-named libraries.
+_FOLDER_ARTIST_YEAR_ALBUM = re.compile(rf"^(?P<artist>.+?){_DASH}{_YEAR}{_DASH}(?P<album>.+)$")
+# "A Clockwork Orange (OST) - 1972" — soundtracks and compilations, no artist.
+_FOLDER_ALBUM_YEAR = re.compile(rf"^(?P<album>.+?){_DASH}{_YEAR}$")
+# "Artist - Album", "Artist -- Album [FLAC]"
+_FOLDER_ARTIST_ALBUM = re.compile(r"^(?P<artist>.+?)\s+-{1,2}\s+(?P<album>.+)$")
+
 _TRAILING_NOISE = re.compile(r"\s*[\(\[\{][^\)\]\}]*[\)\]\}]\s*$")
 
 
@@ -121,14 +134,32 @@ def strip_qualifiers(album: str) -> str:
         title = shorter
 
 
+def _drop_noise(title: str) -> str:
+    """Strip a trailing "[FLAC]"-style tag, unless it is the whole title.
+
+    Sigur Rós really did call an album "( )", so a title that is nothing but
+    a bracketed group is left alone rather than erased.
+    """
+    stripped = _TRAILING_NOISE.sub("", title).strip()
+    return stripped or title.strip()
+
+
 def parse_folder_name(name: str) -> tuple[str | None, str | None]:
     """Best-effort split of a folder name into (artist, album)."""
-    cleaned = _TRAILING_NOISE.sub("", name).strip()
-    if match := _FOLDER_PATTERN.match(cleaned):
+    name = name.strip()
+
+    # Matched against the raw name: stripping noise first would remove the
+    # very brackets a title like "( )" consists of.
+    if match := _FOLDER_ARTIST_YEAR_ALBUM.match(name):
         artist = match["artist"].strip()
-        album = _TRAILING_NOISE.sub("", match["album"]).strip()
-        return (artist or None), (album or None)
-    return None, (cleaned or None)
+    elif match := _FOLDER_ALBUM_YEAR.match(name):
+        artist = ""
+    elif match := _FOLDER_ARTIST_ALBUM.match(name):
+        artist = match["artist"].strip()
+    else:
+        return None, (_drop_noise(name) or None)
+
+    return (artist or None), (_drop_noise(match["album"]) or None)
 
 
 def describe_folder(folder: Path) -> Album:
