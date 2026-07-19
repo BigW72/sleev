@@ -182,21 +182,47 @@ def test_box_set_is_one_album_covering_every_disc(tmp_path: Path) -> None:
     assert found[0].album == "DMBX The Singles"
 
 
-def test_the_canonical_layout(tmp_path: Path) -> None:
-    """Artist/Album/Album (Disc N) — the layout this library is kept in."""
-    (tmp_path / "Radiohead" / "OK Computer").mkdir(parents=True)
-    (tmp_path / "Radiohead" / "OK Computer" / "01.flac").touch()
-    make_album(tmp_path / "Radiohead" / "Kid A", "Kid A (Disc 1)", "Kid A (Disc 2)")
+def test_the_canonical_album_layout(tmp_path: Path) -> None:
+    """<Artist>/<Artist> - <Year> - <Album>/<Album> (Disc <N>).
 
-    found = {a.path.name: a for a in find_album_folders(tmp_path, recurse=True)}
+    Disc folders exist only for multi-disc albums; a single-disc album keeps
+    its audio in the album folder with no disc subfolder at all.
+    """
+    single = tmp_path / "Radiohead" / "Radiohead - 1997 - OK Computer"
+    single.mkdir(parents=True)
+    (single / "01.flac").touch()
+    make_album(
+        tmp_path / "Radiohead" / "Radiohead - 2000 - Kid A",
+        "Kid A (Disc 1)",
+        "Kid A (Disc 2)",
+    )
+
+    found = {a.album: a for a in find_album_folders(tmp_path, recurse=True)}
 
     # The artist folder is not an album, and the single-disc sibling is
     # unaffected by the box set beside it.
     assert set(found) == {"Kid A", "OK Computer"}
     assert found["Kid A"].artist == "Radiohead"
-    assert found["Kid A"].album == "Kid A"
     assert [d.name for d in found["Kid A"].discs] == ["Kid A (Disc 1)", "Kid A (Disc 2)"]
+    assert found["OK Computer"].artist == "Radiohead"
     assert found["OK Computer"].discs == ()
+
+
+def test_the_canonical_compilation_layout(tmp_path: Path) -> None:
+    """<Album> - <Year>/<Album> (Disc <N>) — compilations name no artist."""
+    single = tmp_path / "#va" / "Now Thats What I Call Music - 1999"
+    single.mkdir(parents=True)
+    (single / "01.flac").touch()
+    make_album(tmp_path / "#va" / "MTVExtreme - 2001", "MTVExtreme (Disc 1)", "MTVExtreme (Disc 2)")
+
+    found = {a.album: a for a in find_album_folders(tmp_path, recurse=True)}
+
+    assert set(found) == {"MTVExtreme", "Now Thats What I Call Music"}
+    # A compilation has no one artist, and "#va" is a collection marker rather
+    # than a name to borrow, so both are looked up by album alone.
+    assert all(a.artist is None for a in found.values())
+    assert len(found["MTVExtreme"].discs) == 2
+    assert found["Now Thats What I Call Music"].discs == ()
 
 
 def test_bare_disc_folders_are_grouped(tmp_path: Path) -> None:

@@ -90,22 +90,31 @@ Your audio files are never modified.
 
 ### Box sets
 
-A multi-disc album laid out as `<Artist>/<Album>/<Album> (Disc <N>)` is treated as one
-album, not one per disc. The cover is looked up once and written into the album folder
-*and* every disc folder, so the parent gets artwork even though it holds no audio
-itself, and the discs don't each burn a rate-limited lookup. The album name comes from
-the discs' tags when the parent has none of its own.
+Two hierarchies are understood, with disc folders present only for multi-disc releases:
+
+```
+<Artist>/<Artist> - <Year> - <Album>/<Album> (Disc <N>)     albums
+<Album> - <Year>/<Album> (Disc <N>)                         compilations
+```
+
+A multi-disc release is treated as one album, not one per disc. The cover is looked up
+once and written into the album folder *and* every disc folder, so the parent gets
+artwork even though it holds no audio itself, and the discs don't each burn a
+rate-limited lookup. The album name comes from the discs' tags when the parent has none
+of its own.
 
 ```
 Radiohead/
-    Kid A/                  <- cover.png, one lookup
-        Kid A (Disc 1)/     <- cover.png
-        Kid A (Disc 2)/     <- cover.png
+    Radiohead - 1997 - OK Computer/     <- single disc, audio sits here
+    Radiohead - 2000 - Kid A/           <- cover.png, one lookup
+        Kid A (Disc 1)/                 <- cover.png
+        Kid A (Disc 2)/                 <- cover.png
 ```
 
-Disc folders are normally `<Album> (Disc <N>)`; bare `Disc 2` and `CD2` are recognised
-too. If any folder in the set already has art worth keeping, it fills the others and no
-lookup happens at all.
+A compilation names no artist, so it's looked up by album alone. Disc folders are
+normally `<Album> (Disc <N>)`; bare `Disc 2` and `CD2` are recognised too. If any folder
+in the set already has art worth keeping, it fills the others and no lookup happens at
+all.
 
 The older layout — `Artist/Album (Disc 1)` and `Artist/Album (Disc 2)` sitting beside
 each other under the artist — still works as before, each treated as its own album.
